@@ -20,17 +20,18 @@ tmp_file_name=$(mktemp /tmp/_benchmark_${model_short}_XXXXXXX)
 error_log_file="${tmp_file_name}_error.log"
 log_file="${tmp_file_name}.log"
 
-# Generate an empty result file.
-# This way in case of any crash it will be treated by jenkins as failure
-if [[ -n "$TEST_RESULTS_DIR" ]]; then
-    mkdir -p ${TEST_RESULTS_DIR}
-    LOG_PATH=$(mktemp ${TEST_RESULTS_DIR}/benchmark_${model_short}_XXXXXX.xml)
-fi
-
 scenario=fp8
 if [[ $__fp8 == "no" ]]; then
     scenario=bf16
 fi
+
+# Generate an empty result file.
+# This way in case of any crash it will be treated by jenkins as failure
+if [[ -n "$TEST_RESULTS_DIR" ]]; then
+    mkdir -p ${TEST_RESULTS_DIR}
+    LOG_PATH=$(mktemp ${TEST_RESULTS_DIR}/benchmark_${model_short}_${scenario}_XXXXXX.xml)
+fi
+
 
 # Get threshold values according to the scenario and env variables
 throughput_threshold=999999
