@@ -1,10 +1,24 @@
 #!/bin/bash
 
+__fp8="no"
+
+while [ -n "$1" ];
+    do
+        case $1 in
+        -fp8 )
+            __fp8="yes"
+            ;;
+        esac
+        shift
+    done
+
 model=/mnt/weka/data/pytorch/llama3.1/Meta-Llama-3.1-8B
 model_short=$(basename $model)
 #replace all '.' with '-'
 model_short=${model_short//./-}
-log_file=$(mktemp /tmp/_benchmark_${model_short}_XXXXXXX.log)
+tmp_file_name=$(mktemp /tmp/_benchmark_${model_short}_XXXXXXX)
+error_log_file="${tmp_file_name}_error.log"
+log_file="${tmp_file_name}.log"
 
 # Generate an empty result file.
 # This way in case of any crash it will be treated by jenkins as failure
@@ -13,31 +27,76 @@ if [[ -n "$TEST_RESULTS_DIR" ]]; then
     LOG_PATH=$(mktemp ${TEST_RESULTS_DIR}/benchmark_${model_short}_XXXXXX.xml)
 fi
 
-throughput_threshold=999999 
-if [[ "${PERF_THRESHOLD}" ]]; then
-    throughput_threshold=${PERF_THRESHOLD}
+scenario=fp8
+if [[ $__fp8 == "no" ]]; then
+    scenario=bf16
 fi
-warmup_threshold=1 
-if [[ "${WARMUP_THRESHOLD}" ]]; then
-    warmup_threshold=${WARMUP_THRESHOLD}
-fi
+
+# Get threshold values according to the scenario and env variables
+throughput_threshold=999999
+
+IFS=',' read -ra pairs <<< "$PERF_THRESHOLD"
+for pair in "${pairs[@]}"; do
+    IFS='=' read -ra kv <<< "$pair"
+    key="${kv[0]}"
+    value="${kv[1]}"
+
+    if [[ $key == $scenario ]]; then
+        throughput_threshold=$value
+    fi
+done
+
+warmup_threshold=1
+
+IFS=',' read -ra pairs <<< "$WARMUP_THRESHOLD"
+for pair in "${pairs[@]}"; do
+    IFS='=' read -ra kv <<< "$pair"
+    key="${kv[0]}"
+    value="${kv[1]}"
+
+    if [[ $key == $scenario ]]; then
+        warmup_threshold=$value
+    fi
+done
 
 # Get the directory of the current script
 script_dir=$(dirname "$(readlink -f "$0")")
 
 start=`date +%s`
-python  $script_dir/../../benchmarks/benchmark_throughput.py \
-    --model $model \
-    --device hpu \
-    --seed 2024 \
-    --backend vllm \
-    --dataset /mnt/weka/data/pytorch/llama2/ShareGPT_V3_unfiltered_cleaned_split.json \
-    --num-prompts 1000 \
-    --dtype bfloat16 \
-    --max-model-len 4096 \
-    --max-num-batched-tokens 8192 \
-    --max-num-seqs 128 \
-    --use-padding-aware-scheduling |& tee $log_file
+
+if [[ $__fp8 == "yes"]]; then
+    export QUANT_CONFIG=/software/users/kpietkun/configs/llama3.1_quant_cofnig.json
+    python  $script_dir/../../benchmarks/benchmark_throughput.py \
+        --model $model \
+        --device hpu \
+        --seed 2024 \
+        --backend vllm \
+        --dataset /mnt/weka/data/pytorch/llama2/ShareGPT_V3_unfiltered_cleaned_split.json \
+        --num-prompts 1000 \
+        --dtype bfloat16 \
+        --max-model-len 4096 \
+        --max-num-batched-tokens 8192 \
+        --max-num-seqs 128 \
+        --quantization=inc \
+        --kv-cache-dtype=fp8_inc \
+        --weights-load_device=cpu \
+        --use-padding-aware-scheduling 2> >(tee -a $error_log_file) | tee -a $log_file
+
+else
+
+    python  $script_dir/../../benchmarks/benchmark_throughput.py \
+        --model $model \
+        --device hpu \
+        --seed 2024 \
+        --backend vllm \
+        --dataset /mnt/weka/data/pytorch/llama2/ShareGPT_V3_unfiltered_cleaned_split.json \
+        --num-prompts 1000 \
+        --dtype bfloat16 \
+        --max-model-len 4096 \
+        --max-num-batched-tokens 8192 \
+        --max-num-seqs 128 \
+        --use-padding-aware-scheduling 2> >(tee -a $error_log_file) | tee -a $log_file
+
 end=`date +%s`
 runtime=$((end-start))
 printf " -------------- \nBenchmark took: %2d:%02d\n\n" $((runtime/60)) $((runtime%60)) 
@@ -64,6 +123,12 @@ if [[ "$throughput" ]]; then
 fi
 echo "=== $throughput_status throughput MODEL: ${model_short}  ($throughput >= $throughput_threshold) ==="
 
+if [[ -s "$error_log_file" ]]; then
+    runtime_error=1
+else
+    runtime_error=0
+fi
+
 if [[ -n "$TEST_RESULTS_DIR" ]]; then
     # Store full benchmark log
     chmod +r $log_file
@@ -71,8 +136,18 @@ if [[ -n "$TEST_RESULTS_DIR" ]]; then
 
     # Report results for jenkins
     cat <<EOF > ${LOG_PATH}
+
 <?xml version="1.0" encoding="utf-8"?>
-<testsuites><testsuite name="benchmark" errors="0" failures="$((throughput_fail + warmup_fail))" skipped="0" tests="2" time="$runtime">
+<testsuites><testsuite name="benchmark" errors="$runtime_error" failures="$((throughput_fail + warmup_fail))" skipped="0" tests="3" time="$runtime">
+<testcase classname=".jenkins.benchmark.${model_short}-bf16" name="${model_short}-bf16-no-runtime-error" time="$runtime">
+EOF
+    if [[ "$RUNTIME_ERROR" -eq 1 ]]; then
+        cat <<EOF >> ${LOG_PATH}
+<failure message="Runtime error"> $(cat $error_log_file) </failure>
+EOF
+    fi
+ cat <<EOF >> ${LOG_PATH}
+</testcase>
 <testcase classname=".jenkins.benchmark.${model_short}-bf16" name="${model_short}-bf16-throughput" time="$runtime">
 <properties>
 <property name="throughput" value="$throughput"/>
