@@ -97,6 +97,8 @@ else
         --max-num-seqs 128 \
         --use-padding-aware-scheduling 2> >(tee -a $error_log_file) | tee -a $log_file
 
+fi
+
 end=`date +%s`
 runtime=$((end-start))
 printf " -------------- \nBenchmark took: %2d:%02d\n\n" $((runtime/60)) $((runtime%60)) 
