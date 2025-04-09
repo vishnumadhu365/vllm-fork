@@ -138,7 +138,6 @@ if [[ -n "$TEST_RESULTS_DIR" ]]; then
 
     # Report results for jenkins
     cat <<EOF > ${LOG_PATH}
-
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites><testsuite name="benchmark" errors="$runtime_error" failures="$((throughput_fail + warmup_fail))" skipped="0" tests="3" time="$runtime">
 <testcase classname=".jenkins.benchmark.${model_short}-bf16" name="${model_short}-bf16-no-runtime-error" time="$runtime">
