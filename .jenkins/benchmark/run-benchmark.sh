@@ -64,7 +64,7 @@ script_dir=$(dirname "$(readlink -f "$0")")
 
 start=`date +%s`
 
-if [[ $__fp8 == "yes"]]; then
+if [[ $__fp8 == "yes" ]]; then
     export QUANT_CONFIG=/software/users/kpietkun/configs/llama3.1_quant_cofnig.json
     python  $script_dir/../../benchmarks/benchmark_throughput.py \
         --model $model \
