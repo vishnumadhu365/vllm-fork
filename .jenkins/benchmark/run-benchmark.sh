@@ -145,7 +145,7 @@ if [[ -n "$TEST_RESULTS_DIR" ]]; then
 EOF
     if [[ "$runtime_error" -eq 1 ]]; then
         cat <<EOF >> ${LOG_PATH}
-<failure message="Runtime error"> $(cat $error_log_file) </failure>
+<failure message="Runtime error"> $(cat "$error_log_file" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g") </failure>
 EOF
     fi
  cat <<EOF >> ${LOG_PATH}
