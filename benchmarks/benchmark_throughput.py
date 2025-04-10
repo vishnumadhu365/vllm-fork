@@ -171,6 +171,7 @@ def run_vllm(
     n: int,
     engine_args: EngineArgs,
 ) -> float:
+    print(1/0)
     from vllm import LLM, SamplingParams
     llm = LLM(**dataclasses.asdict(engine_args))
 
