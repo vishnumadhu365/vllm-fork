@@ -143,7 +143,7 @@ if [[ -n "$TEST_RESULTS_DIR" ]]; then
 <testsuites><testsuite name="benchmark" errors="$runtime_error" failures="$((throughput_fail + warmup_fail))" skipped="0" tests="3" time="$runtime">
 <testcase classname=".jenkins.benchmark.${model_short}-${scenario}" name="${model_short}-${scenario}-no-runtime-error" time="$runtime">
 EOF
-    if [[ "$RUNTIME_ERROR" -eq 1 ]]; then
+    if [[ "$runtime_error" -eq 1 ]]; then
         cat <<EOF >> ${LOG_PATH}
 <failure message="Runtime error"> $(cat $error_log_file) </failure>
 EOF
