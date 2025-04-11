@@ -100,6 +100,9 @@ else
 
 fi
 
+# store exit status of the first command in the pipe (python script) only
+runtime_error=${PIPESTATUS[0]}
+
 end=`date +%s`
 runtime=$((end-start))
 printf " -------------- \nBenchmark took: %2d:%02d\n\n" $((runtime/60)) $((runtime%60)) 
@@ -126,12 +129,6 @@ if [[ "$throughput" ]]; then
 fi
 echo "=== $throughput_status throughput MODEL: ${model_short}  ($throughput >= $throughput_threshold) ==="
 
-if [[ -s "$error_log_file" ]]; then
-    runtime_error=1
-else
-    runtime_error=0
-fi
-
 if [[ -n "$TEST_RESULTS_DIR" ]]; then
     # Store full benchmark log
     chmod +r $log_file
@@ -140,25 +137,18 @@ if [[ -n "$TEST_RESULTS_DIR" ]]; then
     # Report results for jenkins
     cat <<EOF > ${LOG_PATH}
 <?xml version="1.0" encoding="utf-8"?>
-<testsuites><testsuite name="benchmark" errors="$runtime_error" failures="$((throughput_fail + warmup_fail))" skipped="0" tests="3" time="$runtime">
-<testcase classname=".jenkins.benchmark.${model_short}-${scenario}" name="${model_short}-${scenario}-no-runtime-error" time="$runtime">
-EOF
-    if [[ "$runtime_error" -eq 1 ]]; then
-        cat <<EOF >> ${LOG_PATH}
-<failure message="Runtime error"> $(cat "$error_log_file" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g") </failure>
-EOF
-    fi
- cat <<EOF >> ${LOG_PATH}
-</testcase>
+<testsuites><testsuite name="benchmark" errors="$runtime_error" failures="$((throughput_fail + warmup_fail))" skipped="0" tests="2" time="$runtime">
 <testcase classname=".jenkins.benchmark.${model_short}-${scenario}" name="${model_short}-${scenario}-throughput" time="$runtime">
 <properties>
 <property name="throughput" value="$throughput"/>
 <property name="throughput threshold" value="$throughput_threshold"/>
 </properties>
 EOF
-    if [[ "$throughput_fail" -eq 1 ]]; then
+    if [ "$throughput_fail" -eq 1 ] || [ "$runtime_error" -eq 1 ]; then
         cat <<EOF >> ${LOG_PATH}
-<failure message="Throughput did not meet the threshold  ($throughput &lt; $throughput_threshold)"></failure>
+<failure message="Throughput did not meet the threshold  ($throughput &lt; $throughput_threshold)">
+$(cat "$error_log_file" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g")
+</failure>
 EOF
     fi
  cat <<EOF >> ${LOG_PATH}
@@ -169,9 +159,11 @@ EOF
 <property name="warmup threshold" value="$warmup_threshold"/>
 </properties>
 EOF
-    if [[ "$warmup_fail" -eq 1 ]]; then
+    if [ "$warmup_fail" -eq 1 ] || [ "$runtime_error" -eq 1 ]; then
         cat <<EOF >> ${LOG_PATH}
-<failure message="Warmup did not meet the threshold ($warmup &gt; $warmup_threshold)"></failure>
+<failure message="Warmup did not meet the threshold ($warmup &gt; $warmup_threshold)">
+$(cat "$error_log_file" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g")
+</failure>
 EOF
     fi
     cat <<EOF >> ${LOG_PATH}
